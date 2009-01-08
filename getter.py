@@ -83,9 +83,8 @@ def fillAlbumCover(filename):
         usage()
 
     mp3 = Mp3AudioFile(filename)
-
-    artist = mp3.getTag().getArtist()
-    album = mp3.getTag().getAlbum()
+    artist = mp3.getTag().getArtist().encode("utf-8")
+    album = mp3.getTag().getAlbum().encode("utf-8")
 
     if album == "":
         print "there are no album title in tags, sorry"
@@ -93,12 +92,11 @@ def fillAlbumCover(filename):
     elif artist == "":
         print "there are no artist name in tags, sorry"
         exit
-
+    print "Getting artwork for '%s'" % album
     cover = getWalmartArtwork(artist, album)
-
     mp3.getTag().addImage(0x03, cover)
     mp3.getTag().update()
-
+    
     os.remove(cover)
 
     print "cover image added"
@@ -110,7 +108,11 @@ def fillTrackLyrics(filename):
         
     mp3 = Mp3AudioFile(filename)
     mp3Tags = mp3.getTag()
-    mp3Tags.setTextEncoding(eyeD3.UTF_8_ENCODING)
+    try:
+        mp3Tags.setTextEncoding(eyeD3.UTF_8_ENCODING)
+    except eyeD3.tag.TagException, e:
+        print e, ", using %s" % mp3Tags.getTextEncoding()
+
     print "Getting lyrics from lyricwiki.org for '%s' - '%s'" % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
     query = {'func': 'getSong',
              'artist': mp3Tags.getArtist().encode("utf-8"),
