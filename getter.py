@@ -212,11 +212,11 @@ def fillTrackLyrics(filename):
     if not isMp3File(filename):
         print filename, "is not a mp3 file"
         usage()
-        
+    
     mp3 = Mp3AudioFile(filename)
     mp3Tags = mp3.getTag()
-    if mp3Tags.getVersion() > eyeD3.ID3_V2_3:
-        mp3Tags.setTextEncoding(eyeD3.UTF_8_ENCODING)
+    mp3Tags.setVersion(eyeD3.ID3_V2_4)
+    mp3Tags.setTextEncoding(eyeD3.UTF_8_ENCODING)
     print "Getting lyrics from lyricwiki.org for '%s' - '%s'" % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
     query = {'func': 'getSong',
              'artist': mp3Tags.getArtist().encode("utf-8"),
@@ -250,7 +250,7 @@ def getFilesRecursive(dirname):
         print dirname, "is not a directory"
         usage()
     
-    mp3_files = []   
+    mp3_files = []
     for path, dirs, files in os.walk(os.path.abspath(dirname)):
         for filename in fnmatch.filter(files, "*.mp3"):
             mp3_files.append(os.path.join(path, filename))
