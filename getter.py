@@ -7,18 +7,19 @@ import getopt
 import glob
 import urllib2
 import urllib
+import re
+import os
+import fnmatch
+from threading import Thread
 
 import eyeD3
 from eyeD3.tag import *
 
+cache = dict()
 
 def usage():
     print "usage: %s [-l|--lyrics] [-a|--artwork] [file|-d dirname]" % sys.argv[0]
     sys.exit(1)
-
-if len(sys.argv) < 3:
-    usage()
-
 
 def getUniqueValues(source):
     target = []
@@ -26,11 +27,54 @@ def getUniqueValues(source):
         if src not in target:
             target.append(src)
     return target
+
+def getAmazonArtwork(artist, album, lock=None):
+
+    def _GetResultURL(xmldata):
+        url_re = re.compile(r"<DetailPageURL>([^<]+)</DetailPageURL>")
+        m = url_re.search(xmldata)
+        return m and m.group(1)
+
+    def _SearchAmazon(artist, album):
+        data = {
+          "Service": "AWSECommerceService",
+          "Version": "2005-03-23",
+          "Operation": "ItemSearch",
+          "ContentType": "text/xml",
+          # AWS ID just for this script
+          "SubscriptionId": "0XRZB4P7WVZTP0C06Y02",
+          "SearchIndex": "Music",
+          "ResponseGroup": "Small",
+        }
+        data["Artist"] = artist
+        data["Keywords"] = album
+
+        fd = urllib.urlopen("%s?%s" % ("http://ecs.amazonaws.com/onca/xml", urllib.urlencode(data)))
+        return fd.read()
+
+    url = _GetResultURL(_SearchAmazon(artist, album))
+    if not url:
+        return None
+    img_re = re.compile(r'''registerImage\("original_image", "([^"]+)"''')
+    prod_data = urllib.urlopen(url).read()
+    m = img_re.search(prod_data)
+    if not m:
+        return None
+    img_url = m.group(1)
+    i = urllib.urlopen(img_url)
+
+    output = tempfile.mktemp(".jpg")
+    o = open(output, "wb")
+    o.write(i.read())
+    o.close()
+
+    return output 
+
     
-def getWalmartArtwork(artist, album):
-    import urllib
-    import re
-    import os
+def getWalmartArtwork(artist, album, lock=None):
+
+    print "Getting artwork from Walmart"
+
     import tempfile
     walmart = { 'albums' : { 'url'   : 'http://www.walmart.com/catalog/search-ng.gsp?',
                              'query' : 'search_query',
@@ -74,8 +118,26 @@ def getWalmartArtwork(artist, album):
         o = open(output, "wb")
         o.write(i.read())
         o.close()
-        print "cover saved to tmp file", output
         return output 
+
+class DummyRunner(Thread):
+    def __init__(self, function, args):
+        Thread.__init__(self)
+        self.args = args
+        self.function = function
+        self.result = None
+        self.finished = False
+
+    def run(self):
+        self.result = self.function(*self.args)
+        self.finished = True
+        
+    def is_finished(self):
+        return self.finished
+    
+    def get_result(self):
+        return self.result;
+        
 
 def fillAlbumCover(filename):
     if not isMp3File(filename):
@@ -83,23 +145,65 @@ def fillAlbumCover(filename):
         usage()
 
     mp3 = Mp3AudioFile(filename)
-    artist = mp3.getTag().getArtist().encode("utf-8")
-    album = mp3.getTag().getAlbum().encode("utf-8")
+
+    artist = mp3.getTag().getArtist()
+    album = mp3.getTag().getAlbum()
+
 
     if album == "":
         print "there are no album title in tags, sorry"
-        exit
+        return None
     elif artist == "":
         print "there are no artist name in tags, sorry"
-        exit
-    print "Getting artwork for '%s'" % album
-    cover = getWalmartArtwork(artist, album)
-    mp3.getTag().addImage(0x03, cover)
-    mp3.getTag().update()
-    
-    os.remove(cover)
+        return None
+        
+    if cache.has_key((artist, album)):
+        print "Cover retrieved from cache"
+        return cache.get((artist, album))
 
-    print "cover image added"
+    print "Getting artwork from Amazon for '%s' - '%s' " % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
+
+    amazonRnr = DummyRunner(getAmazonArtwork, (artist.encode("utf-8"), album.encode("utf-8")))
+    amazonRnr.start()
+    #walmartRnr = DummyRunner(getWalmartArtwork, (artist, album))
+    #walmartRnr.start()
+
+    timeout = 60
+    start_time = time.time();
+    while (time.time() - start_time) < timeout and not amazonRnr.is_finished():  #and not walmartRnr.get_result())\
+        pass
+    
+    cover_file = None
+    if amazonRnr.get_result():
+        cover_file = amazonRnr.get_result()
+        print "cover downloaded from Amazon"
+        #walmartRnr.reject()
+    #elif walmartRnr.get_result():
+        #cover_file = walmartRnr.get_result()
+        #print "Cover downloaded from Walmart"
+        #amazonRnr.reject()
+        
+
+    if not cover_file and amazonRnr.is_finished():
+        print "No cover found"
+        return None
+    elif not cover_file:
+        print "%dsec timeout during getting covers, skipping" % timeout
+        return None
+
+    
+    mp3.getTag().addImage(0x03, cover_file)
+    mp3.getTag().update()
+    print "Cover inserted into mp3"
+
+    cache[(artist, album)] = cover_file
+    print "Cover added to cache"
+
+
+def clean_cache():
+    for f in cache.values():
+        os.remove(f)
+    print "Cache cleaned"
 
 def fillTrackLyrics(filename):
     if not isMp3File(filename):
@@ -108,11 +212,8 @@ def fillTrackLyrics(filename):
         
     mp3 = Mp3AudioFile(filename)
     mp3Tags = mp3.getTag()
-    try:
+    if mp3Tags.getVersion() > eyeD3.ID3_V2_3:
         mp3Tags.setTextEncoding(eyeD3.UTF_8_ENCODING)
-    except eyeD3.tag.TagException, e:
-        print e, ", using %s" % mp3Tags.getTextEncoding()
-
     print "Getting lyrics from lyricwiki.org for '%s' - '%s'" % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
     query = {'func': 'getSong',
              'artist': mp3Tags.getArtist().encode("utf-8"),
@@ -141,23 +242,19 @@ def getFilesRecursive(dirname):
     if not os.path.isdir(dirname):
         print dirname, "is not a directory"
         usage()
-    return __getFilesRecursive(dirname, [])
+    
+    mp3_files = []   
+    for path, dirs, files in os.walk(os.path.abspath(dirname)):
+        for filename in fnmatch.filter(files, "*.mp3"):
+            mp3_files.append(os.path.join(path, filename))
 
-def __getFilesRecursive(dirname, files):
-    if os.path.isdir(dirname):
-        for f in glob.glob(os.path.join(dirname, '*.mp3')):
-            print f
-            fl = os.path.join(dirname, f);
-            files.append(fl)
-        dirList=os.listdir(dirname)
-        for fname in dirList:
-            fl = os.path.join(dirname, fname)
-            if os.path.isdir(fl):
-                files.extend(__getFilesRecursive(fl, files))
-
-        return files
+    return mp3_files
 
 if __name__ == "__main__":
+
+    if len(sys.argv) < 3:
+        usage()
+
     try:
         opts, args = getopt.getopt(sys.argv[1:], "ald:", ["lyrics", "artwork"])
     except getopt.GetoptError, e:
@@ -178,6 +275,8 @@ if __name__ == "__main__":
     if len(args) > 0:
         files.extend(args)
 
+    print "Total files:", len(files)
+
     for f in files:
         print "============================"
         print f
@@ -186,5 +285,5 @@ if __name__ == "__main__":
         if artwork:
             fillAlbumCover(f)
 
-    print "bye"
-
+    clean_cache()
+    print "Bye"
