@@ -148,10 +148,13 @@ def __getFilesRecursive(dirname, files):
         for f in glob.glob(os.path.join(dirname, '*.mp3')):
             print f
             fl = os.path.join(dirname, f);
+            files.append(fl)
+        dirList=os.listdir(dirname)
+        for fname in dirList:
+            fl = os.path.join(dirname, fname)
             if os.path.isdir(fl):
                 files.extend(__getFilesRecursive(fl, files))
-            else:
-                files.append(fl)
+
         return files
 
 if __name__ == "__main__":
