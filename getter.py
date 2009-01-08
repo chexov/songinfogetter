@@ -286,7 +286,7 @@ if __name__ == "__main__":
 
     for f in files:
         print "============================"
-        print f
+        print "Working with %s" % f
         if lyrics:
             fillTrackLyrics(f)
         if artwork:
