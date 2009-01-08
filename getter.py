@@ -266,7 +266,7 @@ if __name__ == "__main__":
     artwork = False
     for opt, value in opts:
         if opt == "-d":
-            files.extend(getFilesRecursive(value.encode("utf-8")))
+            files.extend(getFilesRecursive(value))
         elif opt in ("-l", "--lyrics"):
             lyrics = True
         elif opt in ("-a", "--artwork"):
