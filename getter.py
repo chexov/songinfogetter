@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding=utf-8
 
-
+import logging
 import sys
 import getopt
 import glob
@@ -16,6 +16,9 @@ import eyeD3
 from eyeD3.tag import *
 
 cache = dict()
+logging.basicConfig()
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 def usage():
     print "usage: %s [-l|--lyrics] [-a|--artwork] [file|-d dirname]" % sys.argv[0]
@@ -223,14 +226,18 @@ def fillTrackLyrics(filename):
     u = 'http://lyricwiki.org/api.php?' + urllib.urlencode(query)
     lyrics = None
     try:
+        log.debug("Opening URL `%s`" % u)
         lyrics = urllib2.urlopen(u).read()
         lyrics = lyrics.decode("utf-8")
+        # lyricswiki.org respod with HTTP 200 even if lyrics are not found, but body is 'Not found'
+        if lyrics == 'Not found':
+            lyrics = None
     except:
         print "Error while opening %s: %s" % (u, sys.exc_info())
         return None
     
     if lyrics:
-        print "Lyrics found. Updating file...", 
+        print "Lyrics found. Updating file...",
         mp3Tags.addLyrics(lyrics)
         mp3Tags.update()
         print "file updated."
