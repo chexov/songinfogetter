@@ -285,11 +285,16 @@ if __name__ == "__main__":
     for f in files:
         print "============================"
         print "Working with %s" % f
-        if lyrics:
-            fillTrackLyrics(f)
-        if artwork:
-            fillAlbumCover(f)
-
+        try:
+            if lyrics:
+                fillTrackLyrics(f)
+            if artwork:
+                fillAlbumCover(f)
+        except Exception, e:
+            log.error("Error occured during procession %s: %s", f, e)
+            import traceback
+            traceback.print_tb(sys.exc_info()[2])
+            continue
     clean_cache()
     print "Bye"
 
