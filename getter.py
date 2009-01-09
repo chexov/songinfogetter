@@ -130,77 +130,75 @@ class DummyRunner(Thread):
         self.function = function
         self.result = None
         self.finished = False
-
+    
     def run(self):
         self.result = self.function(*self.args)
         self.finished = True
-        
+    
     def is_finished(self):
         return self.finished
     
     def get_result(self):
         return self.result;
-        
+    
 
 def fillAlbumCover(filename):
     if not isMp3File(filename):
         print filename, "is not a mp3 file"
         usage()
-
+    
     mp3 = Mp3AudioFile(filename)
-
+    
     artist = mp3.getTag().getArtist()
     album = mp3.getTag().getAlbum()
-
-
+    
     if album == "":
         print "there are no album title in tags, sorry"
         return None
     elif artist == "":
         print "there are no artist name in tags, sorry"
         return None
-        
+    
+    # Checking if cache has cached cover_file,
+    # if not than getting cover from artwork providers
+    cover_file = None
+    
     if cache.has_key((artist, album)):
         print "Cover retrieved from cache"
-        return cache.get((artist, album))
-
-    print "Getting artwork from Amazon for '%s' - '%s' " % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
-
-    amazonRnr = DummyRunner(getAmazonArtwork, (artist.encode("utf-8"), album.encode("utf-8")))
-    amazonRnr.start()
-    #walmartRnr = DummyRunner(getWalmartArtwork, (artist, album))
-    #walmartRnr.start()
-
-    timeout = 60
-    start_time = time.time();
-    while (time.time() - start_time) < timeout and not amazonRnr.is_finished():  #and not walmartRnr.get_result())\
-        pass
-    
-    cover_file = None
-    if amazonRnr.get_result():
-        cover_file = amazonRnr.get_result()
-        print "cover downloaded from Amazon"
-        #walmartRnr.reject()
-    #elif walmartRnr.get_result():
-        #cover_file = walmartRnr.get_result()
-        #print "Cover downloaded from Walmart"
-        #amazonRnr.reject()
+        cover_file = cache.get((artist, album))
+    else:
+        print "Getting artwork from Amazon for '%s' - '%s' " % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
+        amazonRnr = DummyRunner(getAmazonArtwork, (artist.encode("utf-8"), album.encode("utf-8")))
+        amazonRnr.start()
         
-
-    if not cover_file and amazonRnr.is_finished():
-        print "No cover found"
-        return None
-    elif not cover_file:
-        print "%dsec timeout during getting covers, skipping" % timeout
-        return None
-
+        timeout = 60
+        start_time = time.time();
+        while (time.time() - start_time) < timeout and not amazonRnr.is_finished():  #and not walmartRnr.get_result())\
+            pass
+        
+        if amazonRnr.get_result():
+            cover_file = amazonRnr.get_result()
+            print "Cover downloaded from Amazon"
+            cache[(artist, album)] = cover_file
+            print "Cover added to cache"
+            
+        #     walmartRnr.reject()
+        # elif walmartRnr.get_result():
+        #     cover_file = walmartRnr.get_result()
+        #     print "Cover downloaded from Walmart"
+        #     amazonRnr.reject()
+        
+        if not cover_file and amazonRnr.is_finished():
+            print "No cover found"
+            return None
+        elif not cover_file:
+            print "%dsec timeout during getting covers, skipping" % timeout
+            return None
     
     mp3.getTag().addImage(0x03, cover_file)
     mp3.getTag().update()
     print "Cover inserted into mp3"
 
-    cache[(artist, album)] = cover_file
-    print "Cover added to cache"
 
 
 def clean_cache():
@@ -294,3 +292,4 @@ if __name__ == "__main__":
 
     clean_cache()
     print "Bye"
+
