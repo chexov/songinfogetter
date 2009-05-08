@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 def usage():
-    print "usage: %s [-l|--lyrics] [-a|--artwork] [file|-d dirname]" % sys.argv[0]
+    print "usage: %s [-l|--lyrics] [-a|--artwork] [<file> <file> <file> <...>|-d dirname]" % sys.argv[0]
     sys.exit(1)
 
 def getUniqueValues(source):
