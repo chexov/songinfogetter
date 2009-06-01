@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
 def usage():
-    print "usage: %s [-l|--lyrics] [-a|--artwork] [<file> <file> <file> <...>|-d dirname]" % sys.argv[0]
+    print "usage: %s [-l|--lyrics] [-a|--artwork] [<file> <file> <dir> <...>]" % sys.argv[0]
     sys.exit(1)
 
 def getUniqueValues(source):
@@ -267,21 +267,30 @@ if __name__ == "__main__":
         usage()
     
     files=[]
+    items=[]
     lyrics = False
     artwork = False
     for opt, value in opts:
-        if opt == "-d":
-            files.extend(getFilesRecursive(value))
-        elif opt in ("-l", "--lyrics"):
+        if opt in ("-l", "--lyrics"):
             lyrics = True
         elif opt in ("-a", "--artwork"):
             artwork = True
 
-    if len(args) > 0:
-        files.extend(args)
+    if len(args) == 1 and args[0] == '-':
+        for __stdinline in sys.stdin.readlines():
+            items.append(__stdinline.rstrip())
+            print items
+    elif len(args) > 0:
+        items.extend(args)
+
+    # If args have dirs, will go recursive on that dir tree
+    for __item in items:
+        if os.path.isdir(__item):
+            files.extend(getFilesRecursive(__item))
+        else:
+            files.append(__item)
 
     print "Total files:", len(files)
-
     for f in files:
         print "============================"
         print "Working with %s" % f
