@@ -206,6 +206,31 @@ def clean_cache():
         os.remove(f)
     print "Cache cleaned"
 
+def getWikiLyrics(artist, song):
+    """
+    http://lyrics.wikia.com/index.php?title=Blind_Pilot:3_Rounds_And_A_Sound&action=edit
+    """
+    MARKER_STARTLYRICS='&lt;lyrics&gt;'
+    MARKER_STOPLYRICS='&lt;/lyrics&gt;'
+    MARKER_NOLYRICS='PUT LYRICS HERE'
+    # normalize the titiles for lwiki
+    artist = artist.replace(' ','_')
+    song = song.replace(' ','_')
+    
+    lyrics_re = ur"%s(.*)%s" % (MARKER_STARTLYRICS, MARKER_STOPLYRICS)
+    pat = re.compile(lyrics_re, re.S|re.I|re.M)
+    
+    lyrics = ""
+    _url="http://lyrics.wikia.com/index.php?title=%s:%s&action=edit" % (artist, song)
+    
+    page = urllib2.urlopen(_url).read()
+    result = pat.findall(page)
+    if result:
+        lyrics = result[0]
+    if lyrics.find(MARKER_NOLYRICS) >-1:
+        lyrics = ""
+    return lyrics
+
 def fillTrackLyrics(filename):
     if not isMp3File(filename):
         print filename, "is not a mp3 file"
@@ -216,20 +241,11 @@ def fillTrackLyrics(filename):
     mp3Tags.setVersion(eyeD3.ID3_V2_4)
     mp3Tags.setTextEncoding(eyeD3.UTF_8_ENCODING)
     print "Getting lyrics from lyricwiki.org for '%s' - '%s'" % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
-    query = {'func': 'getSong',
-             'artist': mp3Tags.getArtist().encode("utf-8"),
-             'song': mp3Tags.getTitle().encode("utf-8"),
-             'fmt': 'text',
-             }
-    u = 'http://lyricwiki.org/api.php?' + urllib.urlencode(query)
     lyrics = None
     try:
-        log.debug("Opening URL `%s`" % u)
-        lyrics = urllib2.urlopen(u).read()
-        lyrics = lyrics.decode("utf-8")
-        # lyricswiki.org respod with HTTP 200 even if lyrics are not found, but body is 'Not found'
-        if lyrics == 'Not found':
-            lyrics = None
+        lyrics = getWikiLyrics(artist = mp3Tags.getArtist().encode("utf-8"),
+                      song = mp3Tags.getTitle().encode("utf-8"))
+        #lyrics = lyrics.decode("utf-8")
     except:
         print "Error while opening %s: %s" % (u, sys.exc_info())
         return None
