@@ -2,6 +2,7 @@
 # coding=utf-8
 
 import logging
+import pprint
 import sys
 import getopt
 import glob
@@ -45,7 +46,7 @@ def getAmazonArtwork(artist, album, lock=None):
           "Operation": "ItemSearch",
           "ContentType": "text/xml",
           # AWS ID just for this script
-          "SubscriptionId": "0XRZB4P7WVZTP0C06Y02",
+          "SubscriptionId": "AKIAJ42BBOCLK2G6XQIQ",
           "SearchIndex": "Music",
           "ResponseGroup": "Small",
         }
@@ -206,50 +207,53 @@ def clean_cache():
         os.remove(f)
     print "Cache cleaned"
 
+
 def getWikiLyrics(artist, song):
     """
-    http://lyrics.wikia.com/index.php?title=Blind_Pilot:3_Rounds_And_A_Sound&action=edit
+    http://lyrics.wikia.com/index.php?title=Special:Search&search=Two_Door_Cinema_Club:Cigarettes_in_the_Theatre
     """
-    MARKER_STARTLYRICS='&lt;lyrics&gt;'
-    MARKER_STOPLYRICS='&lt;/lyrics&gt;'
-    MARKER_NOLYRICS='PUT LYRICS HERE'
-    # normalize the titiles for lwiki
     artist = artist.replace(' ','_')
     song = song.replace(' ','_')
-    
-    lyrics_re = ur"%s(.*)%s" % (MARKER_STARTLYRICS, MARKER_STOPLYRICS)
-    pat = re.compile(lyrics_re, re.S|re.I|re.M)
-    
+
     lyrics = ""
-    _url="http://lyrics.wikia.com/index.php?title=%s:%s&action=edit" % (artist, song)
-    
-    page = urllib2.urlopen(_url).read()
-    result = pat.findall(page)
-    if result:
-        lyrics = result[0]
-    if lyrics.find(MARKER_NOLYRICS) >-1:
-        lyrics = ""
+    _url="http://lyrics.wikia.com/index.php?title=Special:Search&search={artist}:{song}".format(artist=artist, song=song)
+
+    import lxml.html
+    print "URL: %s" % _url
+    root = lxml.html.parse(_url)
+    lyricbox = root.xpath('//div[@class="lyricbox"]')
+    if lyricbox:
+        lyrics = u"\n".join(lyricbox[0].xpath('text()'))
+        if len(lyrics) < 3:
+            lyrics = ""
+        else:
+            print lyrics
     return lyrics
+
 
 def fillTrackLyrics(filename):
     if not isMp3File(filename):
         print filename, "is not a mp3 file"
         usage()
-    
+
     mp3 = Mp3AudioFile(filename)
     mp3Tags = mp3.getTag()
     mp3Tags.setVersion(eyeD3.ID3_V2_4)
     mp3Tags.setTextEncoding(eyeD3.UTF_8_ENCODING)
+    if mp3Tags.getLyrics():
+        print "Already have lyrics. Skipping"
+        return
+
     print "Getting lyrics from lyricwiki.org for '%s' - '%s'" % (mp3.getTag().getArtist(),  mp3.getTag().getTitle())
     lyrics = None
     try:
         lyrics = getWikiLyrics(artist = mp3Tags.getArtist().encode("utf-8"),
                       song = mp3Tags.getTitle().encode("utf-8"))
-        #lyrics = lyrics.decode("utf-8")
     except:
-        print "Error while opening %s: %s" % (u, sys.exc_info())
+        print "Error"
+        pprint.pprint(sys.exc_info())
         return None
-    
+
     if lyrics:
         print "Lyrics found. Updating file...",
         mp3Tags.addLyrics(lyrics)
@@ -310,16 +314,10 @@ if __name__ == "__main__":
     for f in files:
         print "============================"
         print "Working with %s" % f
-        try:
-            if lyrics:
-                fillTrackLyrics(f)
-            if artwork:
-                fillAlbumCover(f)
-        except Exception, e:
-            log.error("Error occured during procession %s: %s", f, e)
-            import traceback
-            traceback.print_tb(sys.exc_info()[2])
-            continue
+        if lyrics:
+            fillTrackLyrics(f)
+        if artwork:
+            fillAlbumCover(f)
     clean_cache()
     print "Bye"
 
